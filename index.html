@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OBITAL HD + MECH</title>
+    <title>OBITAL APPS</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
@@ -11,237 +11,150 @@
         body { margin: 0; background: #050505; overflow: hidden; font-family: 'Segoe UI', sans-serif; color: white; }
         #ton-connect { position: absolute; top: 15px; right: 15px; z-index: 100; }
         #ui-overlay { position: absolute; top: 15px; left: 15px; z-index: 50; pointer-events: none; text-shadow: 0 0 10px #00f2ff; }
-        #combo-text { color: #ff00ff; font-weight: bold; font-size: 20px; transition: 0.2s; }
-        #magnet-ui { color: #b700ff; font-weight: bold; font-size: 16px; display: none; margin-top: 5px; text-shadow: 0 0 10px #b700ff;}
-        .hud-btn { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
-                   background: linear-gradient(45deg, #0088cc, #00f2ff); border: none; padding: 15px 30px; 
-                   border-radius: 15px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; 
-                   box-shadow: 0 0 15px #0088cc; pointer-events: auto; display: none; z-index: 100;}
-        #game-over { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 40px; color: #ff0044; 
-                     text-shadow: 0 0 20px #ff0044; display: none; z-index: 100; font-weight: bold; pointer-events: none;}
+        
+        /* Внутриигровое окно прокачки */
+        #shop-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                      background: rgba(10, 20, 30, 0.95); border: 2px solid #00f2ff; padding: 20px; 
+                      border-radius: 15px; z-index: 200; display: none; text-align: center; box-shadow: 0 0 30px #0088cc;}
+        .buy-btn { background: #00f2ff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 8px; margin-top: 15px; cursor: pointer;}
+
+        /* НИЖНЕЕ МЕНЮ (НАВИГАЦИЯ) */
+        #bottom-nav { position: fixed; bottom: 0; width: 100%; height: 75px; background: rgba(5,5,5,0.9); 
+                      display: flex; justify-content: space-around; align-items: center; 
+                      border-top: 1px solid #333; z-index: 150; padding-bottom: env(safe-area-inset-bottom);}
+        .nav-item { color: #888; text-align: center; font-size: 12px; cursor: pointer; flex: 1; display: flex; flex-direction: column; align-items: center;}
+        .nav-icon { font-size: 24px; margin-bottom: 4px; }
+        
+        /* Центральная кнопка (SUPPORT) */
+        .center-btn { background: linear-gradient(45deg, #ff007a, #7a00ff); width: 65px; height: 65px; 
+                      border-radius: 50%; display: flex; justify-content: center; align-items: center; 
+                      transform: translateY(-20px); box-shadow: 0 0 20px #ff007a; border: 4px solid #050505; color: white; font-size: 30px;}
+        
+        #game-container { padding-bottom: 75px; /* Чтобы шарик не улетал под меню */ }
+        #game-over { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 40px; color: #ff0044; display: none; z-index: 100;}
+        .hud-btn { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); background: #0088cc; border: none; padding: 15px 30px; border-radius: 15px; color: white; display: none; z-index: 100;}
     </style>
 </head>
 <body>
     <div id="ton-connect"></div>
-    
     <div id="ui-overlay">
         <div style="font-size: 28px;">💎 <span id="score">0</span></div>
-        <div id="combo-text">Combo: x1</div>
-        <div style="font-size: 14px; opacity: 0.8; margin-top: 5px;">Level: <span id="lvl">1</span></div>
-        <div id="magnet-ui">🧲 MAGNET ACTIVE!</div>
+        <div style="font-size: 14px; color: #00f2ff;" id="mult-ui">Multiplier: x1</div>
     </div>
     
+    <div id="shop-modal">
+        <h2>🛠 UPGRADE STATION</h2>
+        <p>Double your crystal income!</p>
+        <button class="buy-btn" onclick="buyMultiplier()">Buy x2 (1000 💎)</button>
+        <br><button style="background:none; border:none; color:white; margin-top:10px;" onclick="closeShop()">[ Close ]</button>
+    </div>
+
     <div id="game-over">SYSTEM FAILURE</div>
-    <button class="hud-btn" id="save-btn" onclick="saveAndExit()">SAVE PROGRESS & EXIT</button>
-    
+    <button class="hud-btn" id="save-btn" onclick="saveGame()">SAVE & EXIT</button>
     <div id="game-container"></div>
+
+    <div id="bottom-nav">
+        <div class="nav-item" onclick="reqLeaderboard()">
+            <div class="nav-icon">🏆</div> Топ
+        </div>
+        <div class="nav-item" onclick="reqSupport()">
+            <div class="center-btn">💬</div>
+        </div>
+        <div class="nav-item" onclick="openShop()">
+            <div class="nav-icon">🚀</div> Прокачка
+        </div>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // 1. Инициализация кошелька TON
         const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
             manifestUrl: 'https://mikeshwagens-cell.github.io/my-first-game/tonconnect-manifest.json',
             buttonRootId: 'ton-connect'
         });
 
-        // Игровые переменные
-        let player, crystals, goldCrystals, enemies, powerups, blackhole;
-        let particles, trail;
-        let score = 0, level = 1, speed = 0.15;
-        let combo = 1, comboTimer, magnetTimer;
-        let isGameOver = false, magnetActive = false;
-        let lastTapTime = 0;
+        let player, crystals, enemies;
+        let score = 0, speed = 0.15, sessionMult = 1;
+        let isGameOver = false;
 
-        // 2. Настройка HD графики (WEBGL + resolution)
         const config = {
-            type: Phaser.WEBGL, 
-            width: window.innerWidth, height: window.innerHeight,
+            type: Phaser.WEBGL, width: window.innerWidth, height: window.innerHeight,
             parent: 'game-container', backgroundColor: '#050505',
-            resolution: window.devicePixelRatio, 
+            resolution: window.devicePixelRatio, autoDensity: true,
             physics: { default: 'arcade' }, scene: { create, update }
         };
         const game = new Phaser.Game(config);
 
         function create() {
-            // Эффект следа (Particles)
-            particles = this.add.particles(0, 0, 'flares', {
-                speed: 20, scale: { start: 0.5, end: 0 },
-                blendMode: 'ADD', lifespan: 400
-            });
-
-            // Игрок
-            player = this.add.circle(window.innerWidth/2, window.innerHeight/2 + 100, 15, 0x00ff00);
+            player = this.add.circle(window.innerWidth/2, window.innerHeight/2, 15, 0x00ff00);
             this.physics.add.existing(player);
-            trail = particles.startFollow(player);
-
+            
             crystals = this.physics.add.group();
-            goldCrystals = this.physics.add.group();
             enemies = this.physics.add.group();
-            powerups = this.physics.add.group();
 
             for(let i=0; i<6; i++) spawnCrystal(this);
-
-            // Таймеры спавна
             this.time.addEvent({ delay: 3500, loop: true, callback: () => { if(!isGameOver) spawnEnemy(this); }});
-            this.time.addEvent({ delay: 15000, loop: true, callback: () => { if(!isGameOver) spawnPowerup(this); }});
-            this.time.addEvent({ delay: 10000, loop: true, callback: () => { if(!isGameOver) spawnGold(this); }});
 
-            // Черная дыра
-            this.time.delayedCall(20000, () => {
-                blackhole = this.add.circle(window.innerWidth/2, window.innerHeight/2, 40, 0x220033);
-                blackhole.setStrokeStyle(4, 0xaa00ff, 0.8);
-                this.physics.add.existing(blackhole);
-                this.physics.add.overlap(player, blackhole, gameOver, null, this);
-            });
-
-            // Столкновения
             this.physics.add.overlap(player, crystals, collectCrystal, null, this);
-            this.physics.add.overlap(player, goldCrystals, collectGold, null, this);
-            this.physics.add.overlap(player, powerups, collectMagnet, null, this);
             this.physics.add.overlap(player, enemies, gameOver, null, this);
-
-            // Механика Рывка (Двойной тап)
-            this.input.on('pointerdown', () => {
-                let now = this.time.now;
-                if (now - lastTapTime < 300 && !isGameOver) {
-                    this.tweens.add({ targets: player, x: this.input.activePointer.x, y: this.input.activePointer.y, duration: 150, ease: 'Power2' });
-                    tg.HapticFeedback.impactOccurred('heavy');
-                }
-                lastTapTime = now;
-            });
         }
 
         function spawnCrystal(scene) {
-            const x = Phaser.Math.Between(20, window.innerWidth - 20);
-            const y = Phaser.Math.Between(20, window.innerHeight - 20);
-            const c = scene.add.circle(x, y, 8, 0x00f2ff);
-            c.setStrokeStyle(2, 0xffffff, 0.8);
-            scene.physics.add.existing(c);
-            crystals.add(c);
-        }
-
-        function spawnGold(scene) {
-            const x = Phaser.Math.Between(50, window.innerWidth - 50);
-            const y = Phaser.Math.Between(50, window.innerHeight - 50);
-            const g = scene.add.circle(x, y, 12, 0xffd700);
-            g.setStrokeStyle(2, 0xffaa00, 1);
-            scene.physics.add.existing(g);
-            goldCrystals.add(g);
-        }
-
-        function spawnPowerup(scene) {
-            const x = Phaser.Math.Between(30, window.innerWidth - 30);
-            const y = Phaser.Math.Between(30, window.innerHeight - 30);
-            const p = scene.add.circle(x, y, 10, 0xb700ff);
-            scene.physics.add.existing(p);
-            powerups.add(p);
+            const c = scene.add.circle(Phaser.Math.Between(20, window.innerWidth - 20), Phaser.Math.Between(20, window.innerHeight - 100), 8, 0x00f2ff);
+            scene.physics.add.existing(c); crystals.add(c);
         }
 
         function spawnEnemy(scene) {
-            const x = Math.random() > 0.5 ? 0 : window.innerWidth;
-            const y = Math.random() * window.innerHeight;
-            const e = scene.add.circle(x, y, 12, 0xff0044);
-            e.setStrokeStyle(2, 0xff0000, 1);
-            scene.physics.add.existing(e);
-            enemies.add(e);
-            scene.physics.moveToObject(e, player, 80 + (level * 10));
+            const e = scene.add.circle(Math.random() > 0.5 ? 0 : window.innerWidth, Math.random() * (window.innerHeight - 100), 12, 0xff0044);
+            scene.physics.add.existing(e); enemies.add(e);
+            scene.physics.moveToObject(e, player, 100);
         }
 
         function collectCrystal(p, c) {
             c.destroy();
-            addScore(10 * combo);
-            spawnCrystal(this);
-            updateCombo(this);
-        }
-
-        function collectGold(p, g) {
-            g.destroy();
-            addScore(100);
-            tg.HapticFeedback.notificationOccurred('success');
-        }
-
-        function collectMagnet(p, m) {
-            m.destroy();
-            magnetActive = true;
-            document.getElementById('magnet-ui').style.display = 'block';
-            tg.HapticFeedback.impactOccurred('medium');
-            
-            if(magnetTimer) magnetTimer.remove();
-            magnetTimer = this.time.delayedCall(7000, () => {
-                magnetActive = false;
-                document.getElementById('magnet-ui').style.display = 'none';
-            });
-        }
-
-        function addScore(amount) {
-            score += amount;
+            score += (10 * sessionMult); // Применяем прокачку!
             document.getElementById('score').innerText = score;
+            spawnCrystal(this);
             tg.HapticFeedback.impactOccurred('light');
-
-            if (score > level * 250) {
-                level++;
-                speed += 0.02;
-                document.getElementById('lvl').innerText = level;
-            }
-        }
-
-        function updateCombo(scene) {
-            combo++;
-            document.getElementById('combo-text').innerText = `Combo: x${combo}`;
-            if(comboTimer) comboTimer.remove();
-            comboTimer = scene.time.delayedCall(2000, () => {
-                combo = 1;
-                document.getElementById('combo-text').innerText = `Combo: x1`;
-            });
         }
 
         function gameOver() {
-            if(isGameOver) return;
-            isGameOver = true;
-            this.physics.pause();
-            if (particles) particles.destroy();
-            player.setFillStyle(0x333333); 
-            tg.HapticFeedback.notificationOccurred('error');
+            isGameOver = true; this.physics.pause();
             document.getElementById('game-over').style.display = 'block';
             document.getElementById('save-btn').style.display = 'block';
         }
 
         function update() {
             if (isGameOver) return;
-
             if (this.input.activePointer.isDown) {
+                // Ограничиваем спуск вниз, чтобы шарик не прятался под меню
+                let targetY = Math.min(this.input.activePointer.y, window.innerHeight - 80);
                 player.x = Phaser.Math.Linear(player.x, this.input.activePointer.x, speed);
-                player.y = Phaser.Math.Linear(player.y, this.input.activePointer.y, speed);
-            }
-
-            if (magnetActive) {
-                crystals.getChildren().forEach(c => {
-                    if (Phaser.Math.Distance.Between(player.x, player.y, c.x, c.y) < 250) {
-                        this.physics.moveToObject(c, player, 400);
-                    }
-                });
-            }
-
-            goldCrystals.getChildren().forEach(g => {
-                if (Phaser.Math.Distance.Between(player.x, player.y, g.x, g.y) < 150) {
-                    let angle = Phaser.Math.Angle.Between(player.x, player.y, g.x, g.y);
-                    this.physics.velocityFromRotation(angle, 150, g.body.velocity);
-                } else {
-                    g.body.setVelocity(0, 0);
-                }
-            });
-
-            if(blackhole) {
-                blackhole.scale = 1 + Math.sin(this.time.now / 300) * 0.1;
+                player.y = Phaser.Math.Linear(player.y, targetY, speed);
             }
         }
 
-        function saveAndExit() {
-            const data = JSON.stringify({ action: "save_game", earned: score, new_level: level });
-            tg.sendData(data); 
+        // === ИНТЕРФЕЙС И НАВИГАЦИЯ ===
+        function openShop() { document.getElementById('shop-modal').style.display = 'block'; }
+        function closeShop() { document.getElementById('shop-modal').style.display = 'none'; }
+        
+        function buyMultiplier() {
+            if (score >= 1000) {
+                score -= 1000;
+                sessionMult++;
+                document.getElementById('score').innerText = score;
+                document.getElementById('mult-ui').innerText = `Multiplier: x${sessionMult}`;
+                tg.HapticFeedback.notificationOccurred('success');
+                closeShop();
+            } else {
+                tg.showAlert("Need 1000 💎 for this upgrade!");
+            }
         }
+
+        function reqSupport() { tg.sendData(JSON.stringify({ action: "support" })); }
+        function reqLeaderboard() { tg.sendData(JSON.stringify({ action: "leaderboard" })); }
+        function saveGame() { tg.sendData(JSON.stringify({ action: "save_game", earned: score })); }
     </script>
 </body>
 </html>
