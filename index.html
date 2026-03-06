@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OBITAL PRO</title>
+    <title>OBITAL ULTIMATE</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
         body { margin: 0; background: #050505; overflow: hidden; font-family: 'Segoe UI', sans-serif; color: white; }
         #ui-overlay { position: absolute; top: 15px; left: 15px; z-index: 50; pointer-events: none; text-shadow: 0 0 10px #00f2ff; }
         #combo-text { color: #ff00ff; font-weight: bold; font-size: 20px; transition: 0.2s; }
+        #magnet-ui { color: #b700ff; font-weight: bold; font-size: 16px; display: none; margin-top: 5px; text-shadow: 0 0 10px #b700ff;}
         .hud-btn { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
                    background: linear-gradient(45deg, #0088cc, #00f2ff); border: none; padding: 15px 30px; 
                    border-radius: 15px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; 
@@ -23,6 +24,7 @@
         <div style="font-size: 28px;">💎 <span id="score">0</span></div>
         <div id="combo-text">Combo: x1</div>
         <div style="font-size: 14px; opacity: 0.8; margin-top: 5px;">Level: <span id="lvl">1</span></div>
+        <div id="magnet-ui">🧲 MAGNET ACTIVE!</div>
     </div>
     
     <div id="game-over">SYSTEM FAILURE</div>
@@ -34,10 +36,11 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        let player, crystals, enemies;
+        let player, crystals, goldCrystals, enemies, powerups, blackhole;
         let score = 0, level = 1, speed = 0.15;
-        let combo = 1, comboTimer;
-        let isGameOver = false;
+        let combo = 1, comboTimer, magnetTimer;
+        let isGameOver = false, magnetActive = false;
+        let lastTapTime = 0;
 
         const config = {
             type: Phaser.AUTO, width: window.innerWidth, height: window.innerHeight,
@@ -47,22 +50,47 @@
         const game = new Phaser.Game(config);
 
         function create() {
-            player = this.add.circle(window.innerWidth/2, window.innerHeight/2, 15, 0x00ff00);
+            player = this.add.circle(window.innerWidth/2, window.innerHeight/2 + 100, 15, 0x00ff00);
             this.physics.add.existing(player);
 
             crystals = this.physics.add.group();
+            goldCrystals = this.physics.add.group();
             enemies = this.physics.add.group();
+            powerups = this.physics.add.group();
 
-            for(let i=0; i<5; i++) spawnCrystal(this);
+            for(let i=0; i<6; i++) spawnCrystal(this);
 
-            // Спавн врагов каждые 4 секунды
-            this.time.addEvent({
-                delay: 4000, loop: true,
-                callback: () => { if(!isGameOver) spawnEnemy(this); }
+            // Спавн врагов
+            this.time.addEvent({ delay: 3500, loop: true, callback: () => { if(!isGameOver) spawnEnemy(this); }});
+            // Спавн Магнита раз в 15 секунд
+            this.time.addEvent({ delay: 15000, loop: true, callback: () => { if(!isGameOver) spawnPowerup(this); }});
+            // Спавн Золотого Кристалла раз в 10 секунд
+            this.time.addEvent({ delay: 10000, loop: true, callback: () => { if(!isGameOver) spawnGold(this); }});
+
+            // Черная дыра в центре (появляется через 20 секунд)
+            this.time.delayedCall(20000, () => {
+                blackhole = this.add.circle(window.innerWidth/2, window.innerHeight/2, 40, 0x220033);
+                blackhole.setStrokeStyle(4, 0xaa00ff, 0.8);
+                this.physics.add.existing(blackhole);
+                this.physics.add.overlap(player, blackhole, gameOver, null, this);
             });
 
+            // Столкновения
             this.physics.add.overlap(player, crystals, collectCrystal, null, this);
-            this.physics.add.overlap(player, enemies, hitEnemy, null, this);
+            this.physics.add.overlap(player, goldCrystals, collectGold, null, this);
+            this.physics.add.overlap(player, powerups, collectMagnet, null, this);
+            this.physics.add.overlap(player, enemies, gameOver, null, this);
+
+            // Механика Рывка (Двойной тап)
+            this.input.on('pointerdown', () => {
+                let now = this.time.now;
+                if (now - lastTapTime < 300 && !isGameOver) {
+                    // Делаем рывок
+                    this.tweens.add({ targets: player, x: this.input.activePointer.x, y: this.input.activePointer.y, duration: 150, ease: 'Power2' });
+                    tg.HapticFeedback.impactOccurred('heavy');
+                }
+                lastTapTime = now;
+            });
         }
 
         function spawnCrystal(scene) {
@@ -73,68 +101,17 @@
             crystals.add(c);
         }
 
-        function spawnEnemy(scene) {
-            // Враг появляется с краю экрана
-            const x = Math.random() > 0.5 ? 0 : window.innerWidth;
-            const y = Math.random() * window.innerHeight;
-            const e = scene.add.circle(x, y, 12, 0xff0044);
-            scene.physics.add.existing(e);
-            enemies.add(e);
-            // Враг медленно летит к игроку
-            scene.physics.moveToObject(e, player, 80 + (level * 10));
+        function spawnGold(scene) {
+            const x = Phaser.Math.Between(50, window.innerWidth - 50);
+            const y = Phaser.Math.Between(50, window.innerHeight - 50);
+            const g = scene.add.circle(x, y, 12, 0xffd700);
+            g.setStrokeStyle(2, 0xffaa00, 1);
+            scene.physics.add.existing(g);
+            goldCrystals.add(g);
         }
 
-        function collectCrystal(p, c) {
-            c.destroy();
-            score += (10 * combo);
-            document.getElementById('score').innerText = score;
-            spawnCrystal(this);
-            tg.HapticFeedback.impactOccurred('light');
-
-            // Система комбо
-            combo++;
-            document.getElementById('combo-text').innerText = `Combo: x${combo}`;
-            if(comboTimer) comboTimer.remove();
-            
-            // Если 2 секунды не собирал — комбо сбрасывается
-            comboTimer = this.time.delayedCall(2000, () => {
-                combo = 1;
-                document.getElementById('combo-text').innerText = `Combo: x1`;
-            });
-
-            // Авто-прокачка за очки
-            if (score > level * 200) {
-                level++;
-                speed += 0.02;
-                document.getElementById('lvl').innerText = level;
-                tg.HapticFeedback.notificationOccurred('success');
-            }
-        }
-
-        function hitEnemy(p, e) {
-            isGameOver = true;
-            this.physics.pause();
-            p.setFillStyle(0x333333); // Игрок тухнет
-            tg.HapticFeedback.notificationOccurred('error');
-            
-            // Показываем UI смерти
-            document.getElementById('game-over').style.display = 'block';
-            document.getElementById('save-btn').style.display = 'block';
-        }
-
-        function update() {
-            if (isGameOver) return;
-            if (this.input.activePointer.isDown) {
-                player.x = Phaser.Math.Linear(player.x, this.input.activePointer.x, speed);
-                player.y = Phaser.Math.Linear(player.y, this.input.activePointer.y, speed);
-            }
-        }
-
-        // ОТПРАВКА ДАННЫХ В БОТА
-        function saveAndExit() {
-            const data = JSON.stringify({ action: "save_game", earned: score, new_level: level });
-            tg.sendData(data); // Отправляет данные и закрывает Web App
-        }
-    </script>
-</body>
-</html>
+        function spawnPowerup(scene) {
+            const x = Phaser.Math.Between(30, window.innerWidth - 30);
+            const y = Phaser.Math.Between(30, window.innerHeight - 30);
+            const p = scene.add.circle(x, y, 10, 0xb700ff);
+            scene.physics.add.existing
