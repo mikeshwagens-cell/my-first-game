@@ -3,86 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OBITAL GAME</title>
+    <title>OBITAL PRO</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.gz.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
-        #ui { position: absolute; top: 10px; left: 10px; z-index: 10; color: white; pointer-events: none; }
-        .btn-ui { pointer-events: auto; background: #0088cc; border: none; color: white; padding: 10px; border-radius: 8px; margin-top: 5px; cursor: pointer; }
-        #game-container { width: 100vw; height: 100vh; }
+        body { margin: 0; background: #050505; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        #ton-connect { position: absolute; top: 15px; right: 15px; z-index: 100; transform: scale(0.9); }
+        #ui-overlay { position: absolute; top: 15px; left: 15px; color: #00f2ff; z-index: 50; pointer-events: none; text-shadow: 0 0 10px #00f2ff; }
+        .shop-btn { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
+                    background: linear-gradient(45deg, #0088cc, #00f2ff); border: none; padding: 12px 25px; 
+                    border-radius: 15px; color: white; font-weight: bold; cursor: pointer; box-shadow: 0 0 15px #0088cc; pointer-events: auto; }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <div>💎 Score: <span id="score">0</span></div>
-        <button class="btn-ui" onclick="alert('Реклама скоро будет!')">📺 +500 Points</button>
+    <div id="ton-connect"></div>
+    <div id="ui-overlay">
+        <div style="font-size: 24px;">💎 <span id="score">0</span></div>
+        <div style="font-size: 12px; opacity: 0.7;">LEVEL: <span id="lvl">1</span></div>
     </div>
+    <button class="shop-btn" onclick="buyUpgrade()" id="upg-btn">UPGRADE SPEED (50 💎)</button>
     <div id="game-container"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Настройки игры
+        // 1. Кошелек TON
+        const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: 'https://mikeshwagens-cell.github.io/my-first-game/tonconnect-manifest.json',
+            buttonRootId: 'ton-connect'
+        });
+
+        // 2. Игровые переменные
+        let player, crystals, score = 0, level = 1, speed = 0.15;
+
         const config = {
-            type: Phaser.AUTO,
-            width: window.innerWidth,
-            height: window.innerHeight,
-            parent: 'game-container',
-            backgroundColor: '#0f0f0f',
-            physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
-            scene: { preload, create, update }
+            type: Phaser.AUTO, width: window.innerWidth, height: window.innerHeight,
+            parent: 'game-container', backgroundColor: '#050505',
+            physics: { default: 'arcade' }, scene: { create, update }
         };
-
         const game = new Phaser.Game(config);
-        let player, crystals, score = 0;
-
-        function preload() {
-            // Загрузка не нужна, рисуем фигуры программно
-        }
 
         function create() {
-            // Создаем игрока (Зеленый шар)
+            // Фон: звездная пыль
+            for(let i=0; i<100; i++) {
+                this.add.circle(Math.random()*window.innerWidth, Math.random()*window.innerHeight, 1, 0xffffff, Math.random());
+            }
+
+            // Игрок с неоновым свечением
             player = this.add.circle(window.innerWidth/2, window.innerHeight/2, 20, 0x00ff00);
             this.physics.add.existing(player);
-            player.body.setCollideWorldBounds(true);
-
+            
             // Группа кристаллов
             crystals = this.physics.add.group();
-            for(let i=0; i<8; i++) { spawnCrystal(this); }
+            for(let i=0; i<6; i++) spawnCrystal(this);
 
-            // Отработка касаний
-            this.input.on('pointermove', (pointer) => {
-                this.tweens.add({
-                    targets: player,
-                    x: pointer.x,
-                    y: pointer.y,
-                    duration: 100
-                });
-            });
-
-            // Проверка столкновений
-            this.physics.add.overlap(player, crystals, collectCrystal, null, this);
+            this.physics.add.overlap(player, crystals, (p, c) => {
+                c.destroy();
+                score += 10;
+                document.getElementById('score').innerText = score;
+                spawnCrystal(this);
+                tg.HapticFeedback.impactOccurred('medium');
+            }, null, this);
         }
 
         function spawnCrystal(scene) {
-            const x = Math.random() * window.innerWidth;
-            const y = Math.random() * window.innerHeight;
-            const c = scene.add.circle(x, y, 10, 0x0088ff);
+            const x = Math.random() * (window.innerWidth - 40) + 20;
+            const y = Math.random() * (window.innerHeight - 40) + 20;
+            const c = scene.add.circle(x, y, 10, 0x00f2ff);
+            // Добавляем свечение кристаллу
+            c.setStrokeStyle(2, 0x00f2ff, 0.8);
             scene.physics.add.existing(c);
             crystals.add(c);
         }
 
-        function collectCrystal(player, crystal) {
-            crystal.destroy();
-            score += 10;
-            document.getElementById('score').innerText = score;
-            spawnCrystal(this);
-            tg.HapticFeedback.impactOccurred('light');
+        function update() {
+            if (this.input.activePointer.isDown) {
+                // Плавное движение (Speed зависит от прокачки)
+                player.x = Phaser.Math.Linear(player.x, this.input.activePointer.x, speed);
+                player.y = Phaser.Math.Linear(player.y, this.input.activePointer.y, speed);
+            }
         }
 
-        function update() {}
+        function buyUpgrade() {
+            if (score >= 50) {
+                score -= 50;
+                level++;
+                speed += 0.05;
+                document.getElementById('score').innerText = score;
+                document.getElementById('lvl').innerText = level;
+                document.getElementById('upg-btn').innerText = `UPGRADE SPEED (${50 * level} 💎)`;
+                tg.HapticFeedback.notificationOccurred('success');
+            } else {
+                tg.showAlert("Need more crystals! 💎");
+            }
+        }
     </script>
 </body>
 </html>
