@@ -6,84 +6,116 @@
     <title>OBITAL SYNDICATE</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; background: #0a0a0f; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding-bottom: 20px;}
+        body { margin: 0; background: #0a0a0f; color: white; font-family: 'Segoe UI', sans-serif; padding-bottom: 20px;}
+        .header { background: linear-gradient(180deg, #1a1a2e 0%, #0a0a0f 100%); padding: 20px; text-align: center; border-bottom: 1px solid #333;}
+        .title { font-size: 24px; font-weight: 800; background: -webkit-linear-gradient(45deg, #00f2ff, #0088cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;}
         
-        /* Шапка профиля */
-        .header { background: linear-gradient(180deg, #1a1a2e 0%, #0a0a0f 100%); padding: 20px; text-align: center; border-bottom: 1px solid #333; position: sticky; top: 0; z-index: 100;}
-        .title { font-size: 24px; font-weight: 800; background: -webkit-linear-gradient(45deg, #00f2ff, #0088cc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 5px; letter-spacing: 2px;}
-        .stats { font-size: 14px; color: #888; display: flex; justify-content: center; gap: 15px;}
-        
-        /* Сетка инвентаря */
         .inventory { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px; }
-        
-        /* Карточка Дрона */
-        .card { background: #12121c; border-radius: 15px; padding: 15px; text-align: center; border: 1px solid #222; position: relative; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5);}
+        .card { background: #12121c; border-radius: 15px; padding: 15px; text-align: center; border: 1px solid #222; position: relative;}
         .card.common { border-color: #555; }
         .card.rare { border-color: #0088cc; box-shadow: 0 0 10px rgba(0, 136, 204, 0.2); }
         .card.legendary { border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.3); }
         
-        /* Иконка / Изображение */
-        .drone-icon { font-size: 50px; margin: 10px 0; text-shadow: 0 0 15px rgba(255,255,255,0.2); }
-        .capsule-icon { font-size: 50px; margin: 10px 0; animation: pulse 2s infinite; }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.05); opacity: 1; text-shadow: 0 0 20px #b700ff; }
-            100% { transform: scale(1); opacity: 0.8; }
-        }
+        .drone-icon { font-size: 40px; margin: 10px 0; }
+        .capsule-icon { font-size: 40px; margin: 10px 0; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); text-shadow: 0 0 20px #00f2ff; } 100% { transform: scale(1); } }
 
         .lvl-badge { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 8px; font-size: 12px; font-weight: bold;}
-        .drone-name { font-weight: bold; font-size: 16px; margin-bottom: 5px;}
+        .drone-name { font-weight: bold; font-size: 14px; margin-bottom: 5px;}
         
-        /* Кнопки и таймеры */
         .btn-breed { background: linear-gradient(45deg, #00f2ff, #0088cc); border: none; width: 100%; padding: 10px; border-radius: 8px; color: white; font-weight: bold; margin-top: 10px; cursor: pointer;}
+        .btn-hatch { background: linear-gradient(45deg, #ff007a, #b700ff); border: none; width: 100%; padding: 10px; border-radius: 8px; color: white; font-weight: bold; margin-top: 10px; cursor: pointer; box-shadow: 0 0 10px #ff007a;}
         .timer-box { background: rgba(0,0,0,0.5); padding: 8px; border-radius: 8px; margin-top: 10px; font-family: monospace; font-size: 14px; color: #ff007a; border: 1px solid #ff007a;}
+        
+        #empty-state { text-align: center; color: #666; padding: 50px 20px; grid-column: span 2;}
     </style>
 </head>
 <body>
 
     <div class="header">
         <div class="title">OBITAL LABS</div>
-        <div class="stats">
-            <div>🔋 Energy: 3/3</div>
-            <div>🛸 Drones: 3</div>
-        </div>
+        <div style="font-size: 14px; color: #888; margin-top: 5px;">Your Syndicate Roster</div>
     </div>
 
-    <div class="inventory">
-        <div class="card common">
-            <div class="lvl-badge">LVL 1</div>
-            <div class="drone-icon">👾</div>
-            <div class="drone-name">Basic Drone</div>
-            <button class="btn-breed" onclick="sendBreedLink(1)">🔗 MERGE</button>
-        </div>
-
-        <div class="card rare">
-            <div class="lvl-badge">LVL 2</div>
-            <div class="drone-icon">🛸</div>
-            <div class="drone-name">Scout Drone</div>
-            <button class="btn-breed" onclick="sendBreedLink(2)">🔗 MERGE</button>
-        </div>
-
-        <div class="card legendary">
-            <div class="lvl-badge">LVL 5</div>
-            <div class="capsule-icon">🥚</div>
-            <div class="drone-name">Incubating...</div>
-            <div class="timer-box">01:59:45</div>
-        </div>
-    </div>
+    <div class="inventory" id="inventory-container"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Эта функция будет закрывать WebApp и просить бота выдать ссылку в чат
+        const urlParams = new URLSearchParams(window.location.search);
+        const invData = urlParams.get('inv');
+        const container = document.getElementById('inventory-container');
+
+        function renderInventory() {
+            container.innerHTML = ''; 
+
+            if (!invData || invData.trim() === "") {
+                container.innerHTML = `<div id="empty-state">Инвентарь пуст. Перезапусти бота командой /start</div>`;
+                return;
+            }
+
+            const drones = invData.split('|');
+            const now = Math.floor(Date.now() / 1000);
+
+            drones.forEach(droneStr => {
+                if(!droneStr) return;
+                const [id, levelStr, isIncStr, readyAtStr] = droneStr.split(',');
+                const level = parseInt(levelStr);
+                const isIncubating = parseInt(isIncStr) === 1;
+                const readyAt = parseInt(readyAtStr);
+                
+                let rarityClass = 'common'; let icon = '👾'; let name = `Basic Drone`;
+                if (level >= 3) { rarityClass = 'rare'; icon = '🛸'; name = 'Scout Drone'; }
+                if (level >= 7) { rarityClass = 'legendary'; icon = '🚀'; name = 'Apex Predator'; }
+
+                const card = document.createElement('div');
+                card.className = `card ${rarityClass}`;
+
+                if (isIncubating) {
+                    let timeLeft = readyAt - now;
+                    if (timeLeft <= 0) {
+                        card.innerHTML = `
+                            <div class="lvl-badge">LVL ${level}</div>
+                            <div class="capsule-icon">✨</div>
+                            <div class="drone-name">Ready to Hatch!</div>
+                            <button class="btn-hatch" onclick="hatchCapsule(${id})">🔥 HATCH</button>
+                        `;
+                    } else {
+                        // Рассчитываем минуты и секунды
+                        let m = Math.floor(timeLeft / 60);
+                        let s = timeLeft % 60;
+                        let timeStr = `${m}m ${s}s`;
+                        
+                        card.innerHTML = `
+                            <div class="lvl-badge">LVL ${level}</div>
+                            <div class="capsule-icon">🥚</div>
+                            <div class="drone-name">Incubating...</div>
+                            <div class="timer-box">${timeStr}</div>
+                        `;
+                    }
+                } else {
+                    card.innerHTML = `
+                        <div class="lvl-badge">LVL ${level}</div>
+                        <div class="drone-icon">${icon}</div>
+                        <div class="drone-name">${name}</div>
+                        <button class="btn-breed" onclick="sendBreedLink(${id})">🔗 MERGE</button>
+                    `;
+                }
+                container.appendChild(card);
+            });
+        }
+
+        renderInventory();
+
         function sendBreedLink(droneId) {
             tg.HapticFeedback.impactOccurred('medium');
-            
-            // Отправляем данные боту (мы это настроим в main.py позже)
-            const data = JSON.stringify({ action: "get_breed_link", drone_id: droneId });
-            tg.sendData(data);
+            tg.sendData(JSON.stringify({ action: "get_breed_link", drone_id: droneId }));
+        }
+
+        function hatchCapsule(droneId) {
+            tg.HapticFeedback.notificationOccurred('success');
+            tg.sendData(JSON.stringify({ action: "hatch", drone_id: droneId }));
         }
     </script>
 </body>
